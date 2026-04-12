@@ -775,7 +775,110 @@
   // ═══════════════════════════════════════════════
   initPeer();
 
-  // timer core + render added in next step
+  // ═══════════════════════════════════════════════
+  // TIMER CORE
+  // ═══════════════════════════════════════════════
+  function getElapsed() {
+    if (!ts.running) return ts.elapsed;
+    return Math.floor((Date.now() - ts.phaseStart) / 1000);
+  }
+
+  function getRemaining() {
+    return Math.max(0, PHASES[ts.phase].duration - getElapsed());
+  }
+
+  function resetTimerState() {
+    clearInterval(timerLoop); timerLoop = null;
+    ts.running = false; ts.phase = 0; ts.elapsed = 0; ts.phaseStart = 0;
+    matchStarted = false; advLock = false;
+    setHalo(null);
+  }
+
+  function startLoop() {
+    clearInterval(timerLoop);
+    timerLoop = setInterval(tick, 100);
+  }
+
+  function tick() {
+    renderTimer('h');
+    if (ts.running && getRemaining() <= 0 && !advLock) {
+      advLock = true;
+      advancePhase();
+    }
+  }
+
+  function advancePhase() {
+    clearInterval(timerLoop); timerLoop = null;
+    ts.phase++;
+    ts.elapsed    = 0;
+    ts.phaseStart = Date.now();
+
+    if (ts.phase >= PHASES.length) {
+      // Match over
+      ts.running = false;
+      ts.phase   = PHASES.length - 1;
+      setHalo(null);
+      playSound('end');
+      broadcastState();
+      renderTimer('h');
+      setTimeout(function () {
+        document.getElementById('ov-complete').classList.add('show');
+      }, 500);
+    } else {
+      advLock = false;
+      playSound(ts.phase === 3 ? 'endgame' : 'phase');
+      broadcastState();
+      timerLoop = setInterval(tick, 100);
+      renderTimer('h');
+    }
+  }
+
+  function timerToggle() {
+    if (!ts.running) {
+      if (!matchStarted) {
+        // First start — show 3-2-1 countdown then begin
+        showCountdown(function () {
+          matchStarted  = true;
+          ts.running    = true;
+          ts.phaseStart = Date.now();
+          startLoop();
+          playSound('start');
+          document.getElementById('h-reset-btn').style.visibility = 'visible';
+          renderTimer('h');
+          broadcastState();
+        });
+      } else {
+        // Resume from pause
+        ts.running    = true;
+        ts.phaseStart = Date.now() - ts.elapsed * 1000;
+        startLoop();
+        renderTimer('h');
+        broadcastState();
+      }
+    } else {
+      // Pause
+      ts.elapsed = getElapsed();
+      ts.running = false;
+      clearInterval(timerLoop); timerLoop = null;
+      setHalo(null);
+      renderTimer('h');
+      broadcastState();
+    }
+  }
+
+  function timerReset() {
+    document.getElementById('ov-complete').classList.remove('show');
+    resetTimerState();
+    broadcastState();
+    document.getElementById('h-reset-btn').style.visibility = 'hidden';
+    renderTimer('h');
+  }
+
+  function newMatch() {
+    timerReset();
+  }
+
+  // render + halo + sound + countdown added in next step
   </script>
 
 </body>
