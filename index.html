@@ -530,7 +530,253 @@
     </div>
   </div>
 
-  <!-- scripts added in next step -->
+  <script>
+  // ═══════════════════════════════════════════════
+  // CONSTANTS
+  // ═══════════════════════════════════════════════
+  var PHASES = [
+    { name: 'Autonomous', duration: 15,  color: '#4a8fe8' },
+    { name: 'Pause',      duration: 3,   color: '#454567' },
+    { name: 'Teleop',     duration: 105, color: '#e8534a' },
+    { name: 'Endgame',    duration: 30,  color: '#f0a500' }
+  ];
+
+  // ═══════════════════════════════════════════════
+  // APP STATE
+  // ═══════════════════════════════════════════════
+  var appMode  = 'host';   // 'host' | 'join'
+  var alliance = 'red';
+  var volume   = 0.5;
+
+  var ts = {               // timer state
+    running:    false,
+    phase:      0,
+    elapsed:    0,         // seconds elapsed when paused
+    phaseStart: 0          // Date.now() when current phase started
+  };
+  var matchStarted = false;
+  var timerLoop    = null;
+  var advLock      = false; // prevents double-advance on a single tick
+
+  // PeerJS
+  var peer      = null;
+  var hostConn  = null;    // client → host connection
+  var clients   = [];      // host's array of DataConnections
+
+  // ═══════════════════════════════════════════════
+  // NAVIGATION
+  // ═══════════════════════════════════════════════
+  function goTo(id) {
+    document.querySelectorAll('.screen').forEach(function (s) {
+      s.classList.remove('active');
+    });
+    document.getElementById(id).classList.add('active');
+  }
+
+  // ═══════════════════════════════════════════════
+  // SETUP — UI HANDLERS
+  // ═══════════════════════════════════════════════
+  function selectAlliance(a) {
+    alliance = a;
+    document.getElementById('btn-red').classList.toggle('sel',  a === 'red');
+    document.getElementById('btn-blue').classList.toggle('sel', a === 'blue');
+  }
+
+  function onVolInput(val) {
+    volume = val / 100;
+    document.getElementById('vol-pct').textContent = val + '%';
+  }
+
+  function setMode(m) {
+    appMode = m;
+    document.getElementById('seg-host').classList.toggle('active', m === 'host');
+    document.getElementById('seg-join').classList.toggle('active', m === 'join');
+    document.getElementById('panel-host').style.display = m === 'host' ? 'block' : 'none';
+    document.getElementById('panel-join').style.display = m === 'join' ? 'block' : 'none';
+  }
+
+  // ═══════════════════════════════════════════════
+  // PEERJS — HOST INIT
+  // ═══════════════════════════════════════════════
+  function initPeer() {
+    // Generate a short 6-char alphanumeric room code used as the peer ID
+    var code = Math.random().toString(36).slice(2, 8).toUpperCase();
+
+    try {
+      peer = new Peer(code.toLowerCase());
+
+      peer.on('open', function (id) {
+        document.getElementById('host-code').textContent     = code;
+        document.getElementById('host-code-sub').textContent = 'Share this code with your team';
+        document.getElementById('btn-launch').disabled = false;
+      });
+
+      peer.on('connection', function (conn) {
+        clients.push(conn);
+        conn.on('open',  function ()  { refreshPeerCount(); broadcastState(); });
+        conn.on('close', function ()  { clients = clients.filter(function (c) { return c !== conn; }); refreshPeerCount(); });
+        conn.on('error', function ()  { clients = clients.filter(function (c) { return c !== conn; }); refreshPeerCount(); });
+      });
+
+      peer.on('error', function () {
+        // Network unavailable — run standalone
+        document.getElementById('host-code').textContent     = 'LOCAL';
+        document.getElementById('host-code-sub').textContent = 'No network — standalone mode';
+        document.getElementById('btn-launch').disabled = false;
+      });
+
+    } catch (e) {
+      document.getElementById('host-code').textContent     = 'LOCAL';
+      document.getElementById('host-code-sub').textContent = 'PeerJS unavailable — standalone mode';
+      document.getElementById('btn-launch').disabled = false;
+    }
+  }
+
+  function refreshPeerCount() {
+    var n   = clients.length;
+    var bar = document.getElementById('h-sync-bar');
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    document.getElementById('h-peer-txt').textContent =
+      n + ' device' + (n !== 1 ? 's' : '') + ' synced';
+    var strip  = document.getElementById('host-conn');
+    var stripT = document.getElementById('host-conn-txt');
+    if (n > 0) {
+      strip.className  = 'conn-strip ok';
+      stripT.textContent = n + ' peer' + (n > 1 ? 's' : '') + ' connected';
+    } else {
+      strip.className  = 'conn-strip idle';
+      stripT.textContent = 'Waiting for peers to connect';
+    }
+  }
+
+  function broadcastState() {
+    var msg = {
+      type:    'state',
+      phase:   ts.phase,
+      running: ts.running,
+      elapsed: getElapsed(),
+      phaseStart: ts.phaseStart,
+      started: matchStarted
+    };
+    clients.forEach(function (c) {
+      try { if (c.open) c.send(msg); } catch (e) {}
+    });
+  }
+
+  // ═══════════════════════════════════════════════
+  // PEERJS — CLIENT CONNECT
+  // ═══════════════════════════════════════════════
+  function joinRoom() {
+    var code = document.getElementById('join-input').value.trim().toUpperCase();
+    if (code.length < 4) { alert('Enter a valid room code.'); return; }
+
+    var btn = document.getElementById('btn-connect');
+    btn.textContent = 'Connecting…';
+    btn.disabled    = true;
+    setConnStrip('join-conn', 'join-conn-txt', 'idle', 'Connecting to ' + code + '…');
+
+    if (!peer) {
+      peer = new Peer();
+      peer.on('open', function () { doConnect(code); });
+      peer.on('error', function () {
+        setConnStrip('join-conn', 'join-conn-txt', 'err', 'Network error');
+        btn.textContent = 'Connect'; btn.disabled = false;
+      });
+    } else {
+      doConnect(code);
+    }
+  }
+
+  function doConnect(code) {
+    hostConn = peer.connect(code.toLowerCase(), { reliable: true });
+
+    hostConn.on('open', function () {
+      setConnStrip('join-conn', 'join-conn-txt', 'ok', 'Connected to host');
+      document.getElementById('c-sync-txt').textContent = 'Synced to host: ' + code;
+      setAllianceSub('c-alliance-sub');
+      goTo('sc-client');
+    });
+
+    hostConn.on('data', function (msg) {
+      if (msg.type === 'state') applyRemoteState(msg);
+    });
+
+    hostConn.on('close', function () {
+      document.getElementById('c-sync-txt').textContent = 'Host disconnected';
+    });
+
+    hostConn.on('error', function () {
+      setConnStrip('join-conn', 'join-conn-txt', 'err', 'Could not reach host — check code');
+      document.getElementById('btn-connect').textContent = 'Connect';
+      document.getElementById('btn-connect').disabled   = false;
+    });
+
+    // 8-second connection timeout
+    setTimeout(function () {
+      if (hostConn && !hostConn.open) {
+        setConnStrip('join-conn', 'join-conn-txt', 'err', 'Connection timed out');
+        document.getElementById('btn-connect').textContent = 'Connect';
+        document.getElementById('btn-connect').disabled   = false;
+      }
+    }, 8000);
+  }
+
+  function applyRemoteState(msg) {
+    var wasRunning = ts.running;
+    ts.phase   = msg.phase;
+    ts.running = msg.running;
+    matchStarted = msg.started;
+
+    if (msg.running && msg.phaseStart) {
+      ts.phaseStart = msg.phaseStart;
+    } else {
+      ts.elapsed = msg.elapsed || 0;
+    }
+
+    var waitEl = document.getElementById('c-wait-txt');
+    if (waitEl) waitEl.style.display = msg.started ? 'none' : 'block';
+
+    if (msg.running && !wasRunning) { startLoop(); }
+    else if (!msg.running)          { clearInterval(timerLoop); timerLoop = null; }
+
+    renderTimer('c');
+  }
+
+  // ═══════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════
+  function setConnStrip(stripId, txtId, cls, txt) {
+    document.getElementById(stripId).className = 'conn-strip ' + cls;
+    document.getElementById(txtId).textContent = txt;
+  }
+
+  function setAllianceSub(elId) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = (alliance === 'red' ? '🔴 Red Alliance' : '🔵 Blue Alliance') + ' · REBUILT 2026';
+  }
+
+  function launchHost() {
+    setAllianceSub('h-alliance-sub');
+    resetTimerState();
+    goTo('sc-host');
+    renderTimer('h');
+  }
+
+  function leaveTimer() {
+    resetTimerState();
+    if (hostConn) { try { hostConn.close(); } catch (e) {} hostConn = null; }
+    document.getElementById('ov-complete').classList.remove('show');
+    goTo('sc-setup');
+  }
+
+  // ═══════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════
+  initPeer();
+
+  // timer core + render added in next step
+  </script>
 
 </body>
 </html>
