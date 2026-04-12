@@ -52,6 +52,9 @@
       overflow-x: hidden;
       -webkit-text-size-adjust: 100%;
       -webkit-tap-highlight-color: transparent;
+      /* Subtle dot-grid texture matching the original */
+      background-image: radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 24px 24px;
     }
 
     /* ── Screen system ─────────────────────────────── */
@@ -125,7 +128,7 @@
     /* ── Alliance buttons ──────────────────────────── */
     .alliance-row { display: flex; gap: 10px; width: 100%; max-width: 360px; margin-bottom: 20px; }
     .alliance-btn {
-      flex: 1; padding: 13px; border: 2px solid transparent;
+      flex: 1; padding: 16px 13px; border: 2px solid transparent;
       border-radius: var(--r); font-size: 15px; font-weight: 800;
       cursor: pointer; font-family: inherit; letter-spacing: .5px;
       transition: opacity .15s, border-color .15s, transform .1s;
@@ -343,6 +346,22 @@
     .mc-sub    { font-size: 12px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; }
     .mc-btn    { margin-top: 10px; max-width: 220px; }
 
+    /* ── Timer sound row ───────────────────────────── */
+    .tmr-sound-row {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; max-width: 360px; margin-top: 14px;
+      padding: 10px 14px; border-radius: var(--r-sm);
+      background: var(--surf2); border: 1px solid var(--border);
+    }
+    .tmr-sound-icon { font-size: 16px; line-height: 1; }
+    .tmr-sound-btn {
+      background: var(--surf3); border: none; color: var(--text2);
+      font-size: 12px; font-weight: 700; padding: 6px 12px;
+      border-radius: 6px; cursor: pointer; font-family: inherit;
+      transition: background .15s, color .15s; white-space: nowrap;
+    }
+    .tmr-sound-btn.muted { background: var(--red-d); color: var(--red); }
+
   </style>
 </head>
 <body>
@@ -491,6 +510,15 @@
         <span class="sync-dot"></span>
         <span id="h-peer-txt">0 devices synced</span>
         <span class="host-badge" style="margin-left:auto">HOST</span>
+      </div>
+      <!-- Sound toggle row -->
+      <div class="tmr-sound-row">
+        <span class="tmr-sound-icon" id="h-sound-icon">🔊</span>
+        <input type="range" class="vol-range" id="h-vol"
+               min="0" max="100" value="50"
+               oninput="onTimerVol(this.value)"
+               style="flex:1;max-width:160px">
+        <button class="tmr-sound-btn" id="h-mute-btn" onclick="toggleMute()">Mute</button>
       </div>
     </div>
   </div>
@@ -757,6 +785,25 @@
   function setConnStrip(stripId, txtId, cls, txt) {
     document.getElementById(stripId).className = 'conn-strip ' + cls;
     document.getElementById(txtId).textContent = txt;
+  }
+
+  var muted = false;
+
+  function toggleMute() {
+    muted = !muted;
+    var btn  = document.getElementById('h-mute-btn');
+    var icon = document.getElementById('h-sound-icon');
+    if (btn)  { btn.textContent = muted ? 'Unmute' : 'Mute'; btn.classList.toggle('muted', muted); }
+    if (icon) icon.textContent = muted ? '🔇' : '🔊';
+  }
+
+  function onTimerVol(val) {
+    volume = val / 100;
+    // Keep setup slider in sync if visible
+    var sv = document.getElementById('setup-vol');
+    if (sv) sv.value = val;
+    var lbl = document.getElementById('vol-pct');
+    if (lbl) lbl.textContent = val + '%';
   }
 
   function setAllianceSub(elId) {
@@ -1027,6 +1074,7 @@
   // SOUND  (Web Audio API — no audio files)
   // ═══════════════════════════════════════════════
   function playSound(type) {
+    if (muted) return;
     try {
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
       function tone(freq, t0, dur, vol) {
