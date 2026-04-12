@@ -207,6 +207,133 @@
     .btn-blue  { background: var(--blue); color: #fff; }
     .btn-surf3 { background: var(--surf3); color: var(--text2); }
 
+    /* ── Timer body ────────────────────────────────── */
+    .tmr-body { justify-content: center; gap: 0; }
+
+    /* ── Phase label + name ────────────────────────── */
+    .tmr-phase-lbl {
+      font-size: 11px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 3px;
+    }
+    .tmr-phase-name {
+      font-size: 24px; font-weight: 900; letter-spacing: 1px;
+      text-align: center; margin-bottom: 8px; transition: color .4s;
+    }
+
+    /* ── Clock ─────────────────────────────────────── */
+    .tmr-clock {
+      font-size: 88px; font-weight: 900;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      text-align: center; letter-spacing: -3px; line-height: 1;
+      padding: 4px 0; transition: color .4s;
+    }
+
+    /* ── Phase pips ────────────────────────────────── */
+    .tmr-pips { display: flex; gap: 6px; justify-content: center; margin: 16px 0 20px; }
+    .tmr-pip  {
+      width: 44px; height: 6px; border-radius: 3px;
+      background: var(--surf4); transition: background .3s, box-shadow .3s;
+    }
+    .tmr-pip.on  { background: var(--gold); }
+    .tmr-pip.cur { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+
+    /* ── Hub status cards ──────────────────────────── */
+    .tmr-hub-row { display: flex; gap: 8px; width: 100%; max-width: 360px; margin-bottom: 18px; }
+    .tmr-hub {
+      flex: 1; border-radius: var(--r-sm); padding: 11px 8px;
+      text-align: center; border: 2px solid transparent; transition: all .3s;
+    }
+    .tmr-hub-lbl   {
+      font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 5px;
+    }
+    .tmr-hub-state { font-size: 12px; font-weight: 800; }
+
+    .hub-active { border-color: var(--green); background: var(--green-d); }
+    .hub-active .tmr-hub-state { color: var(--green); }
+
+    .hub-done { border-color: var(--surf4); background: rgba(20,20,34,.6); opacity: .6; }
+    .hub-done .tmr-hub-state { color: var(--text2); }
+
+    .hub-wait { border-color: var(--surf4); background: rgba(20,20,34,.4); opacity: .45; }
+    .hub-wait .tmr-hub-state { color: var(--text3); }
+
+    @keyframes eg-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .hub-eg { border-color: var(--gold); background: var(--gold-d); animation: eg-pulse 1s ease-in-out infinite; }
+    .hub-eg .tmr-hub-state { color: var(--gold); }
+
+    /* ── Play/Pause control ────────────────────────── */
+    .tmr-ctrl-row { display: flex; gap: 10px; width: 100%; max-width: 360px; margin-bottom: 14px; }
+    .tmr-ctrl-btn {
+      flex: 1; padding: 16px; border: none; border-radius: var(--r);
+      font-size: 16px; font-weight: 800; cursor: pointer;
+      font-family: inherit; transition: opacity .15s, transform .1s;
+    }
+    .tmr-ctrl-btn:active   { opacity: .7; transform: scale(.98); }
+    .tmr-ctrl-btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+
+    /* ── Sync / waiting bars ───────────────────────── */
+    .wait-text {
+      font-size: 14px; font-weight: 600; color: var(--text2);
+      text-align: center; margin-bottom: 10px;
+    }
+    .sync-bar {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; max-width: 360px;
+      background: rgba(76,175,125,.08); border: 1px solid rgba(76,175,125,.2);
+      border-radius: var(--r-sm); padding: 9px 14px;
+      font-size: 12px; color: var(--text2);
+    }
+    .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+    .host-badge {
+      background: var(--gold); color: #000;
+      font-size: 10px; font-weight: 800; letter-spacing: 1px;
+      padding: 2px 7px; border-radius: 4px;
+    }
+
+    /* ── Halo overlays ─────────────────────────────── */
+    #halo-l, #halo-r {
+      position: fixed; top: 0; bottom: 0; width: 50%;
+      pointer-events: none; z-index: 997; display: none;
+    }
+    #halo-l { left: 0; }
+    #halo-r { right: 0; }
+    @keyframes halo-pulse {
+      0%,100% { box-shadow: inset 0 0 80px 30px var(--halo-c,transparent); }
+      50%      { box-shadow: inset 0 0 140px 60px var(--halo-c,transparent); }
+    }
+
+    /* ── Countdown overlay ─────────────────────────── */
+    #ov-countdown {
+      position: fixed; inset: 0; background: rgba(11,11,22,.93);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9990; gap: 8px;
+    }
+    #ov-countdown.show { display: flex; }
+    .cd-lbl {
+      font-size: 13px; font-weight: 800; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2);
+    }
+    .cd-num {
+      font-size: 148px; font-weight: 900;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      line-height: 1; color: var(--gold);
+    }
+
+    /* ── Match complete overlay ────────────────────── */
+    #ov-complete {
+      position: fixed; inset: 0; background: rgba(11,11,22,.92);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9980; gap: 14px; padding: 24px;
+    }
+    #ov-complete.show { display: flex; }
+    .mc-check { font-size: 72px; }
+    .mc-title  { font-size: 30px; font-weight: 900; color: var(--gold); }
+    .mc-sub    { font-size: 12px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; }
+    .mc-btn    { margin-top: 10px; max-width: 220px; }
+
   </style>
 </head>
 <body>
@@ -288,10 +415,122 @@
     </div><!-- .body -->
   </div><!-- #sc-setup -->
 
-  <!-- remaining screens + scripts added in next steps -->
+  <!-- ══════════════════════════════════════════════
+       HALO OVERLAYS (fixed, pointer-events:none)
+  ══════════════════════════════════════════════ -->
+  <div id="halo-l"></div>
+  <div id="halo-r"></div>
 
-</body>
-</html>
+  <!-- ══════════════════════════════════════════════
+       COUNTDOWN OVERLAY
+  ══════════════════════════════════════════════ -->
+  <div id="ov-countdown">
+    <div class="cd-lbl">Get Ready</div>
+    <div class="cd-num" id="cd-num">3</div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       MATCH COMPLETE OVERLAY
+  ══════════════════════════════════════════════ -->
+  <div id="ov-complete">
+    <div class="mc-check">✓</div>
+    <div class="mc-title">Match Complete</div>
+    <div class="mc-sub">REBUILT 2026</div>
+    <button class="btn-cta btn-gold mc-btn" onclick="newMatch()">New Match</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       TIMER SCREEN — HOST
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="sc-host">
+    <div class="hdr">
+      <button class="hdr-btn" onclick="leaveTimer()">‹ Home</button>
+      <div class="hdr-mid">
+        <div class="hdr-title">Match Timer</div>
+        <div class="hdr-sub" id="h-alliance-sub">REBUILT 2026</div>
+      </div>
+      <button class="hdr-btn" id="h-reset-btn" style="visibility:hidden" onclick="timerReset()">Reset</button>
+    </div>
+    <div class="body tmr-body">
+      <div class="tmr-phase-lbl">Current Phase</div>
+      <div class="tmr-phase-name" id="h-phase-name">Autonomous</div>
+      <div class="tmr-clock"      id="h-clock">0:15</div>
+      <div class="tmr-pips"       id="h-pips">
+        <div class="tmr-pip cur"></div>
+        <div class="tmr-pip"></div>
+        <div class="tmr-pip"></div>
+        <div class="tmr-pip"></div>
+      </div>
+      <div class="tmr-hub-row">
+        <div class="tmr-hub hub-active" id="h-hub-auto">
+          <div class="tmr-hub-lbl">Auton</div>
+          <div class="tmr-hub-state" id="h-hub-auto-s">READY</div>
+        </div>
+        <div class="tmr-hub hub-wait" id="h-hub-tel">
+          <div class="tmr-hub-lbl">Teleop</div>
+          <div class="tmr-hub-state" id="h-hub-tel-s">WAITING</div>
+        </div>
+        <div class="tmr-hub hub-wait" id="h-hub-eg">
+          <div class="tmr-hub-lbl">Endgame</div>
+          <div class="tmr-hub-state" id="h-hub-eg-s">WAITING</div>
+        </div>
+      </div>
+      <div class="tmr-ctrl-row">
+        <button class="tmr-ctrl-btn btn-gold" id="h-play-btn" onclick="timerToggle()">▶ Start</button>
+      </div>
+      <div class="sync-bar" id="h-sync-bar" style="display:none">
+        <span class="sync-dot"></span>
+        <span id="h-peer-txt">0 devices synced</span>
+        <span class="host-badge" style="margin-left:auto">HOST</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       TIMER SCREEN — CLIENT
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="sc-client">
+    <div class="hdr">
+      <button class="hdr-btn" onclick="leaveTimer()">‹ Home</button>
+      <div class="hdr-mid">
+        <div class="hdr-title">Match Timer</div>
+        <div class="hdr-sub" id="c-alliance-sub">REBUILT 2026</div>
+      </div>
+      <div style="min-width:56px"></div>
+    </div>
+    <div class="body tmr-body">
+      <div class="tmr-phase-lbl">Current Phase</div>
+      <div class="tmr-phase-name" id="c-phase-name">Autonomous</div>
+      <div class="tmr-clock"      id="c-clock">0:15</div>
+      <div class="tmr-pips"       id="c-pips">
+        <div class="tmr-pip cur"></div>
+        <div class="tmr-pip"></div>
+        <div class="tmr-pip"></div>
+        <div class="tmr-pip"></div>
+      </div>
+      <div class="tmr-hub-row">
+        <div class="tmr-hub hub-active" id="c-hub-auto">
+          <div class="tmr-hub-lbl">Auton</div>
+          <div class="tmr-hub-state" id="c-hub-auto-s">READY</div>
+        </div>
+        <div class="tmr-hub hub-wait" id="c-hub-tel">
+          <div class="tmr-hub-lbl">Teleop</div>
+          <div class="tmr-hub-state" id="c-hub-tel-s">WAITING</div>
+        </div>
+        <div class="tmr-hub hub-wait" id="c-hub-eg">
+          <div class="tmr-hub-lbl">Endgame</div>
+          <div class="tmr-hub-state" id="c-hub-eg-s">WAITING</div>
+        </div>
+      </div>
+      <div class="wait-text" id="c-wait-txt">Waiting for host to start…</div>
+      <div class="sync-bar">
+        <span class="sync-dot"></span>
+        <span id="c-sync-txt">Synced to host</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- scripts added in next step -->
 
 </body>
 </html>
