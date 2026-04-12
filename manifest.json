@@ -2,7 +2,7 @@
   "name": "Match Timer – REBUILT 2026",
   "short_name": "Match Timer",
   "description": "FRC match timer with real-time peer sync for REBUILT 2026",
-  "start_url": "/",
+  "start_url": "/2026/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0b0b16",
