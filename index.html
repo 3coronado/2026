@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Match Timer – REBUILT 2026</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+
+    /* ── Design tokens ─────────────────────────────── */
+    :root {
+      --bg:      #0b0b16;
+      --surf:    #141422;
+      --surf2:   #1c1c30;
+      --surf3:   #24243c;
+      --surf4:   #2e2e4a;
+      --gold:    #f0a500;
+      --gold-d:  rgba(240,165,0,.13);
+      --red:     #e8534a;
+      --red-d:   rgba(232,83,74,.13);
+      --blue:    #4a8fe8;
+      --blue-d:  rgba(74,143,232,.13);
+      --green:   #4caf7d;
+      --green-d: rgba(76,175,125,.13);
+      --text:    #f0f0f8;
+      --text2:   #8888aa;
+      --text3:   #454567;
+      --border:  rgba(255,255,255,.07);
+      --r:       14px;
+      --r-sm:    9px;
+      --sh:      0 4px 24px rgba(0,0,0,.5);
+    }
+
+    /* ── Reset ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ──────────────────────────────────────── */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-text-size-adjust: 100%;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Screen system ─────────────────────────────── */
+    .screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .screen.active { display: flex; }
+
+    /* ── Header ────────────────────────────────────── */
+    .hdr {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--surf);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      gap: 8px;
+    }
+    .hdr-mid   { flex: 1; text-align: center; }
+    .hdr-title { font-size: 17px; font-weight: 800; letter-spacing: .3px; }
+    .hdr-sub   {
+      font-size: 10px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); margin-top: 1px;
+    }
+    .hdr-btn {
+      background: none; border: none; color: var(--gold);
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      padding: 6px 8px; border-radius: 8px;
+      font-family: inherit; min-width: 56px; text-align: center;
+      transition: opacity .15s;
+    }
+    .hdr-btn:active { opacity: .55; }
+
+    /* ── Scrollable body area ──────────────────────── */
+    .body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 20px 40px;
+    }
+
+    /* ── Shared utility classes ────────────────────── */
+    .full-w   { width: 100%; max-width: 360px; }
+    .sec-lbl  {
+      font-size: 11px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2);
+      margin-bottom: 8px; align-self: flex-start;
+      width: 100%; max-width: 360px;
+    }
+    .divider  { height: 1px; background: var(--border); width: 100%; max-width: 360px; margin: 18px 0; }
+
+    /* ── Segment control ───────────────────────────── */
+    .seg-ctrl {
+      display: flex; background: var(--surf2);
+      border-radius: 10px; padding: 3px; gap: 2px;
+      width: 100%; max-width: 360px; margin-bottom: 20px;
+    }
+    .seg-btn {
+      flex: 1; padding: 9px 12px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      background: transparent; color: var(--text2);
+      font-family: inherit; transition: background .15s, color .15s;
+    }
+    .seg-btn.active { background: var(--surf4); color: var(--text); }
+
+    /* ── Alliance buttons ──────────────────────────── */
+    .alliance-row { display: flex; gap: 10px; width: 100%; max-width: 360px; margin-bottom: 20px; }
+    .alliance-btn {
+      flex: 1; padding: 13px; border: 2px solid transparent;
+      border-radius: var(--r); font-size: 15px; font-weight: 800;
+      cursor: pointer; font-family: inherit; letter-spacing: .5px;
+      transition: opacity .15s, border-color .15s, transform .1s;
+    }
+    .alliance-btn:active { transform: scale(.97); }
+    .alliance-btn.red  { background: var(--red);  color: #fff; }
+    .alliance-btn.blue { background: var(--blue); color: #fff; }
+    .alliance-btn.sel  { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
+    .alliance-btn:not(.sel) { opacity: .45; }
+
+    /* ── Volume row ────────────────────────────────── */
+    .vol-row {
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; max-width: 360px; margin-bottom: 20px;
+    }
+    .vol-icon { font-size: 18px; line-height: 1; }
+    .vol-range {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 6px; background: var(--surf4); border-radius: 3px;
+      outline: none; cursor: pointer;
+    }
+    .vol-range::-webkit-slider-runnable-track { height: 6px; background: var(--surf4); border-radius: 3px; }
+    .vol-range::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 24px; height: 24px;
+      border-radius: 50%; background: var(--gold);
+      margin-top: -9px; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    }
+    .vol-range::-moz-range-thumb {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--gold); border: none; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    }
+    .vol-pct { font-size: 13px; font-weight: 700; color: var(--text2); min-width: 38px; text-align: right; }
+
+    /* ── Room card ─────────────────────────────────── */
+    .room-card {
+      width: 100%; max-width: 360px; background: var(--surf2);
+      border-radius: var(--r); border: 1px solid var(--border);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .room-card-lbl {
+      font-size: 10px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 8px;
+    }
+    .room-code-display {
+      font-size: 36px; font-weight: 900;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      letter-spacing: 6px; color: var(--gold); text-align: center; padding: 6px 0;
+    }
+    .room-code-sub { font-size: 11px; color: var(--text2); text-align: center; margin-top: 4px; }
+    .room-input {
+      width: 100%; padding: 14px 16px;
+      background: var(--surf3); border: 1.5px solid var(--border);
+      border-radius: var(--r-sm); color: var(--text);
+      font-size: 22px; font-weight: 700;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      letter-spacing: 6px; text-align: center; text-transform: uppercase;
+      outline: none; transition: border-color .2s;
+    }
+    .room-input:focus { border-color: var(--gold); }
+    .room-input::placeholder { color: var(--text3); letter-spacing: 2px; font-size: 13px; font-weight: 600; }
+
+    /* ── Connection status strip ───────────────────── */
+    .conn-strip {
+      display: flex; align-items: center; gap: 8px;
+      padding: 11px 14px; margin-bottom: 14px;
+      width: 100%; max-width: 360px;
+      border-radius: var(--r-sm); font-size: 13px; font-weight: 600;
+    }
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .conn-strip.idle     { background: var(--surf2); color: var(--text2); }
+    .conn-strip.idle .conn-dot     { background: var(--text3); }
+    .conn-strip.ok       { background: var(--green-d); color: var(--green); border: 1px solid rgba(76,175,125,.3); }
+    .conn-strip.ok .conn-dot       { background: var(--green); }
+    .conn-strip.err      { background: var(--red-d); color: var(--red); border: 1px solid rgba(232,83,74,.3); }
+    .conn-strip.err .conn-dot      { background: var(--red); }
+
+    /* ── Primary CTA button ────────────────────────── */
+    .btn-cta {
+      width: 100%; max-width: 360px; padding: 16px;
+      border: none; border-radius: var(--r);
+      font-size: 16px; font-weight: 800; cursor: pointer;
+      font-family: inherit; transition: opacity .15s, transform .1s;
+    }
+    .btn-cta:active   { opacity: .75; transform: scale(.98); }
+    .btn-cta:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+    .btn-gold  { background: var(--gold); color: #000; }
+    .btn-red   { background: var(--red);  color: #fff; }
+    .btn-blue  { background: var(--blue); color: #fff; }
+    .btn-surf3 { background: var(--surf3); color: var(--text2); }
+
+  </style>
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════
+       SETUP SCREEN
+  ══════════════════════════════════════════════ -->
+  <div class="screen active" id="sc-setup">
+    <div class="hdr">
+      <div style="min-width:56px"></div>
+      <div class="hdr-mid">
+        <div class="hdr-title">Match Timer</div>
+        <div class="hdr-sub">REBUILT 2026</div>
+      </div>
+      <div style="min-width:56px"></div>
+    </div>
+
+    <div class="body" style="gap:0">
+
+      <!-- Alliance -->
+      <div class="sec-lbl" style="margin-top:4px">Your Alliance</div>
+      <div class="alliance-row">
+        <button class="alliance-btn red sel" id="btn-red"  onclick="selectAlliance('red')">Red</button>
+        <button class="alliance-btn blue"    id="btn-blue" onclick="selectAlliance('blue')">Blue</button>
+      </div>
+
+      <!-- Volume -->
+      <div class="vol-row">
+        <span class="vol-icon">🔊</span>
+        <input  type="range" class="vol-range" id="setup-vol"
+                min="0" max="100" value="50"
+                oninput="onVolInput(this.value)">
+        <span class="vol-pct" id="vol-pct">50%</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Host / Join mode -->
+      <div class="sec-lbl">Role</div>
+      <div class="seg-ctrl">
+        <button class="seg-btn active" id="seg-host" onclick="setMode('host')">Host</button>
+        <button class="seg-btn"        id="seg-join" onclick="setMode('join')">Join</button>
+      </div>
+
+      <!-- HOST panel -->
+      <div id="panel-host" style="width:100%;max-width:360px">
+        <div class="room-card">
+          <div class="room-card-lbl">Your Room Code</div>
+          <div class="room-code-display" id="host-code">· · · · · ·</div>
+          <div class="room-code-sub"     id="host-code-sub">Connecting to network…</div>
+        </div>
+        <div class="conn-strip idle" id="host-conn">
+          <div class="conn-dot"></div>
+          <span id="host-conn-txt">Waiting for peers to connect</span>
+        </div>
+        <button class="btn-cta btn-gold" id="btn-launch" onclick="launchHost()" disabled>
+          Launch Timer
+        </button>
+      </div>
+
+      <!-- JOIN panel -->
+      <div id="panel-join" style="width:100%;max-width:360px;display:none">
+        <div class="room-card">
+          <div class="room-card-lbl">Enter Room Code</div>
+          <input  type="text" class="room-input" id="join-input"
+                  placeholder="XXXXXX" maxlength="6"
+                  oninput="this.value=this.value.toUpperCase()"
+                  onkeydown="if(event.key==='Enter')joinRoom()">
+        </div>
+        <div class="conn-strip idle" id="join-conn">
+          <div class="conn-dot"></div>
+          <span id="join-conn-txt">Enter a room code to connect</span>
+        </div>
+        <button class="btn-cta btn-gold" id="btn-connect" onclick="joinRoom()">
+          Connect
+        </button>
+      </div>
+
+    </div><!-- .body -->
+  </div><!-- #sc-setup -->
+
+  <!-- remaining screens + scripts added in next steps -->
+
+</body>
+</html>
+
+</body>
+</html>
