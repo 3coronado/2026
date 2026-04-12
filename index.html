@@ -878,7 +878,173 @@
     timerReset();
   }
 
-  // render + halo + sound + countdown added in next step
+  // ═══════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════
+  function renderTimer(pfx) {
+    var phase     = PHASES[ts.phase];
+    var remaining = getRemaining();
+    var mins      = Math.floor(remaining / 60);
+    var secs      = remaining % 60;
+    var timeStr   = mins + ':' + String(secs).padStart(2, '0');
+
+    // Clock
+    setEl(pfx + '-clock',      'textContent', timeStr);
+    setEl(pfx + '-clock',      'style.color', phase.color);
+
+    // Phase name
+    setEl(pfx + '-phase-name', 'textContent', phase.name);
+    setEl(pfx + '-phase-name', 'style.color', phase.color);
+
+    // Pips
+    var pips = document.querySelectorAll('#' + pfx + '-pips .tmr-pip');
+    pips.forEach(function (pip, i) {
+      pip.classList.toggle('on',  i < ts.phase);
+      pip.classList.toggle('cur', i === ts.phase);
+    });
+
+    // Hub cards
+    renderHubs(pfx);
+
+    // Play button label (host only)
+    if (pfx === 'h') {
+      var btn = document.getElementById('h-play-btn');
+      if (btn) {
+        btn.textContent       = ts.running ? '⏸ Pause' : (matchStarted ? '▶ Resume' : '▶ Start');
+        btn.style.background  = ts.running ? '#e8534a' : '#f0a500';
+        btn.style.color       = '#000';
+      }
+      updateHalo();
+    }
+
+    // Client wait text
+    if (pfx === 'c') {
+      var wt = document.getElementById('c-wait-txt');
+      if (wt) wt.style.display = matchStarted ? 'none' : 'block';
+    }
+  }
+
+  function renderHubs(pfx) {
+    var p = ts.phase;
+    var running = ts.running;
+
+    // Auton
+    setHub(pfx + '-hub-auto',  pfx + '-hub-auto-s',
+      p === 0 ? 'hub-active' : 'hub-done',
+      p === 0 ? (running ? 'ACTIVE' : 'READY') : 'DONE');
+
+    // Teleop
+    var telCls = p < 2 ? 'hub-wait' : (p === 2 ? 'hub-active' : 'hub-done');
+    var telTxt = p < 2 ? 'WAITING' : (p === 2 ? (running ? 'ACTIVE' : 'READY') : 'DONE');
+    setHub(pfx + '-hub-tel', pfx + '-hub-tel-s', telCls, telTxt);
+
+    // Endgame
+    var egCls = p < 3 ? 'hub-wait' : 'hub-eg';
+    var egTxt = p < 3 ? 'WAITING' : (running ? 'ACTIVE' : 'READY');
+    setHub(pfx + '-hub-eg', pfx + '-hub-eg-s', egCls, egTxt);
+  }
+
+  function setHub(hubId, stateId, cls, txt) {
+    var hub = document.getElementById(hubId);
+    var st  = document.getElementById(stateId);
+    if (hub) hub.className = 'tmr-hub ' + cls;
+    if (st)  st.textContent = txt;
+  }
+
+  function setEl(id, prop, val) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (prop.indexOf('style.') === 0) {
+      el.style[prop.slice(6)] = val;
+    } else {
+      el[prop] = val;
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // HALO
+  // ═══════════════════════════════════════════════
+  function setHalo(color, pulse) {
+    var hl = document.getElementById('halo-l');
+    var hr = document.getElementById('halo-r');
+    if (!hl || !hr) return;
+    if (!color) {
+      hl.style.display = hr.style.display = 'none';
+      return;
+    }
+    hl.style.display = hr.style.display = 'block';
+    document.documentElement.style.setProperty('--halo-c', color);
+    if (pulse) {
+      hl.style.animation = hr.style.animation = 'halo-pulse 1s ease-in-out infinite';
+      hl.style.boxShadow = hr.style.boxShadow = '';
+    } else {
+      hl.style.animation = hr.style.animation = 'none';
+      hl.style.boxShadow = hr.style.boxShadow = 'inset 0 0 70px 30px ' + color;
+    }
+  }
+
+  function updateHalo() {
+    if (!ts.running) { setHalo(null); return; }
+    switch (ts.phase) {
+      case 0: setHalo('rgba(74,143,232,0.38)',  false); break;
+      case 1: setHalo(null);                            break;
+      case 2: setHalo('rgba(232,83,74,0.38)',   false); break;
+      case 3: setHalo('rgba(240,165,0,0.42)',   true);  break;
+      default: setHalo(null);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // COUNTDOWN OVERLAY
+  // ═══════════════════════════════════════════════
+  function showCountdown(callback) {
+    var ov  = document.getElementById('ov-countdown');
+    var num = document.getElementById('cd-num');
+    var n   = 3;
+    ov.classList.add('show');
+    num.textContent = n;
+    playSound('tick');
+    var tick = function () {
+      n--;
+      if (n <= 0) { ov.classList.remove('show'); callback(); return; }
+      num.textContent = n;
+      playSound('tick');
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1000);
+  }
+
+  // ═══════════════════════════════════════════════
+  // SOUND  (Web Audio API — no audio files)
+  // ═══════════════════════════════════════════════
+  function playSound(type) {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      function tone(freq, t0, dur, vol) {
+        var osc  = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(vol * volume, ctx.currentTime + t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t0 + dur);
+        osc.start(ctx.currentTime + t0);
+        osc.stop(ctx.currentTime + t0 + dur + 0.05);
+      }
+      switch (type) {
+        case 'tick':    tone(1000, 0,    0.10, 0.25); break;
+        case 'start':   tone(880,  0,    0.12, 0.30); tone(1100, 0.15, 0.18, 0.30); break;
+        case 'phase':   tone(660,  0,    0.10, 0.28); tone(880,  0.13, 0.14, 0.24); break;
+        case 'endgame': tone(880,  0,    0.08, 0.30); tone(880,  0.11, 0.08, 0.30); tone(1100, 0.23, 0.20, 0.35); break;
+        case 'end':     tone(660,  0,    0.10, 0.30); tone(500,  0.13, 0.10, 0.30); tone(350,  0.27, 0.35, 0.40); break;
+      }
+    } catch (e) {}
+  }
+
+  // ═══════════════════════════════════════════════
+  // BOOT
+  // ═══════════════════════════════════════════════
+  renderTimer('h');
+  renderTimer('c');
   </script>
 
 </body>
