@@ -645,10 +645,9 @@ select option{background:var(--surf2)}
         <div class="card-hd">ROOM CODE</div>
         <input id="setup-room" type="text" inputmode="text" autocomplete="off" autocorrect="off"
           autocapitalize="characters" spellcheck="false"
-          placeholder="e.g. 2026WASNO or 3310"
           style="text-transform:uppercase;letter-spacing:1px;font-size:20px;font-weight:800;text-align:center"
           oninput="this.value=this.value.replace(/[^a-zA-Z0-9_-]/g,'').toUpperCase()">
-        <div style="font-size:11px;color:var(--text2);margin-top:8px;text-align:center">All devices on the same field enter the same code</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:8px;text-align:center">Leave blank to run standalone (no sync)</div>
       </div>
 
       <button class="btn btn-gold" onclick="setupGo()" style="font-size:18px;padding:18px;margin-top:4px">
@@ -703,8 +702,13 @@ function setupToggleHost(row) {
 
 function setupGo() {
   var room = (document.getElementById('setup-room').value || '').replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!room) { toast('⚠️ Enter a room code first'); return; }
   localStorage.setItem('tmr_room', room.toLowerCase());
+  if (!room) {
+    // Standalone mode — force host so start controls are visible
+    localStorage.setItem('tmr_is_host', '1');
+    var tog = document.getElementById('setup-host-tog');
+    if (tog) tog.className = 'tog on';
+  }
   openTimer();
 }
 
@@ -1041,14 +1045,17 @@ function tmrUpdateNetDot() {
 }
 
 /* ─── NAVIGATION ─── */
+function tmrIsStandalone() {
+  return !(localStorage.getItem('tmr_room') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+}
 function openTimer() {
   goTo('sc-timer');
   TMR._lastPhaseIdx=-1;
   tmrLoadAudio();
-  tmrNetConnect(); // native WebSocket — auto-reconnects on its own
+  if (!tmrIsStandalone()) tmrNetConnect();
   renderTimerPre();
 }
-function timerGoHome() { timerStop(); tmrNetDestroy(); goTo('sc-home'); }
+function timerGoHome() { timerStop(); tmrNetDestroy(); goTo('sc-setup'); }
 function timerStop() { cancelAnimationFrame(TMR.tickRaf); TMR.running=false; }
 
 function timerReset() {
@@ -1084,18 +1091,21 @@ function renderTimerPre() {
     return '<button onclick="tmrSetAlly(\'' + val + '\')" style="flex:1;padding:14px;border-radius:var(--r-sm);border:2px solid '+(on?color:'var(--border)')+';background:'+(on?color:'var(--surf2)')+';color:'+(on?'#fff':'var(--text2)')+';font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s">'+label+'</button>';
   }
 
+  var standalone=tmrIsStandalone();
   var netMsg = '';
-  if(TMR_NET.connected && isHost) { netMsg = 'Host ready · <b style="color:var(--text)">'+room+'</b> · '+TMR_NET.conns.length+' device'+(TMR_NET.conns.length!==1?'s':''); }
+  if(standalone){ netMsg = 'Standalone · no sync'; }
+  else if(TMR_NET.connected && isHost) { netMsg = 'Host ready · <b style="color:var(--text)">'+room+'</b> · '+TMR_NET.conns.length+' device'+(TMR_NET.conns.length!==1?'s':''); }
   else if(TMR_NET.connected) { netMsg = 'Synced to host · <b style="color:var(--text)">'+room+'</b>'; }
   else if(isHost) { netMsg = 'Starting host on <b style="color:var(--text)">'+room+'</b>…'; }
   else { netMsg = 'Looking for host on <b style="color:var(--text)">'+room+'</b>…'; }
+  var netDot=standalone?'off':(TMR_NET.connected?'on':'off');
   var netStatusHtml='<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-top:10px">'
-    +'<span class="tmr-net-dot '+(TMR_NET.connected?'on':'off')+'"></span>'
+    +'<span class="tmr-net-dot '+netDot+'"></span>'
     +netMsg
     +'</div>';
 
   var hostSection='';
-  if(isHost){
+  if(isHost || standalone){
     hostSection=
       '<div style="display:flex;gap:10px">'
       +'<button onclick="timerBeginCountdown()" style="flex:2;padding:18px;background:var(--gold);color:#000;border:none;border-radius:var(--r);font-size:17px;font-weight:800;cursor:pointer;font-family:inherit">▶  5s Countdown</button>'
@@ -1110,8 +1120,8 @@ function renderTimerPre() {
   el.innerHTML=
     '<div style="max-width:420px;margin:0 auto">'
     +'<div class="card">'
-      +'<div class="card-hd">'+(isHost?'HUB VIEW <span class="tmr-host-badge">HOST</span>':'YOUR ALLIANCE')+'</div>'
-      +(isHost
+      +'<div class="card-hd">'+(standalone?'HUB VIEW <span class="tmr-host-badge">SOLO</span>':(isHost?'HUB VIEW <span class="tmr-host-badge">HOST</span>':'YOUR ALLIANCE'))+'</div>'
+      +((isHost||standalone)
         ?'<div style="display:flex;gap:8px">'
           +abtn('red','var(--red)','🔴 Red')
           +abtn('both','var(--surf3)','↔ Both')
@@ -1130,7 +1140,7 @@ function renderTimerPre() {
         +'<div style="font-size:18px;opacity:.7" onclick="tmrSetMaster(500)">🔊</div>'
         +'<div id="tmr-vol-pct" style="min-width:42px;text-align:right;font-size:13px;font-weight:700;color:var(--text);font-family:\'SF Mono\',monospace">'+Math.round(TMR.vol*TMR.gain*100)+'%</div>'
       +'</div>'
-      +(isHost?'<div style="text-align:center;font-size:10px;color:var(--text3);margin-top:4px;font-weight:500">PA Output</div>':'')
+      +((isHost||standalone)?'<div style="text-align:center;font-size:10px;color:var(--text3);margin-top:4px;font-weight:500">PA Output</div>':'')
     +'</div>'
     +hostSection
     +netStatusHtml
