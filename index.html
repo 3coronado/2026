@@ -1094,7 +1094,7 @@ function timerStop() { cancelAnimationFrame(TMR.tickRaf); TMR.running=false; }
 function timerReset() {
   timerStop();
   TMR.elapsed=0; TMR.elapsedAtPause=0; TMR.paused=false;
-  TMR._lastPhaseIdx=-1; TMR._startMs=0;
+  TMR._lastPhaseIdx=-1; TMR._startMs=0; TMR.wonAuto='';
   if(tmrNetIsHost()) tmrNetPublish({t:'reset'});
   var h=document.getElementById('tmr-halo');
   if(h){h.style.display='none';h.style.boxShadow='';}
@@ -1231,7 +1231,7 @@ function timerInstantStart() {
   if(!tmrNetIsHost()&&!TMR.ally){toast('⚠️ Pick your alliance first');return;}
   if(tmrNetIsHost()&&(!TMR.ally||TMR.ally==='both')) TMR.ally='host';
   var sm=Date.now()+200; // tiny buffer for network
-  TMR._startMs=sm;
+  TMR._startMs=sm; TMR.wonAuto='';
   if(TMR_NET.connected) tmrNetPublish({t:'start_in',startMs:sm,hostAlly:TMR.ally});
   // Skip countdown overlay — go straight to timer
   TMR.running=true; TMR.paused=false;
@@ -1249,6 +1249,7 @@ function timerBeginCountdown() {
   // Host: default to 'both' split-screen if no specific side picked
   if(tmrNetIsHost()&&(!TMR.ally||TMR.ally==='both')) TMR.ally='host';
   // Host picked a specific side — keep it as-is for single halo
+  TMR.wonAuto='';
   if(!TMR_NET.connected){
     // Offline mode — just countdown locally
     var sm=Date.now()+5500;
