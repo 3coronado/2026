@@ -215,6 +215,19 @@
     .btn-cta:active   { opacity: .75; transform: scale(.98); }
     .btn-cta:disabled { opacity: .3; cursor: not-allowed; transform: none; }
     .btn-gold  { background: var(--gold); color: #000; }
+
+    /* ── Delay stepper ─────────────────────────────── */
+    .delay-row  { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .delay-btn  {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--surf3); border: none; color: var(--text);
+      font-size: 20px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .delay-btn:active { background: var(--surf4); }
+    .delay-val  { font-size: 20px; font-weight: 800; min-width: 36px; text-align: center; }
+    .delay-note { font-size: 11px; color: var(--text3); font-weight: 600; }
     .btn-red   { background: var(--red);  color: #fff; }
     .btn-blue  { background: var(--blue); color: #fff; }
     .btn-surf3 { background: var(--surf3); color: var(--text2); }
@@ -418,6 +431,17 @@
 
       <div class="divider"></div>
 
+      <!-- Auto → Teleop delay -->
+      <div class="sec-lbl">Delay Between Auto & Teleop</div>
+      <div class="delay-row full-w">
+        <button class="delay-btn" onclick="adjustDelay(-1)">−</button>
+        <span class="delay-val" id="delay-val">5s</span>
+        <button class="delay-btn" onclick="adjustDelay(1)">+</button>
+        <span class="delay-note">off-clock</span>
+      </div>
+
+      <div class="divider"></div>
+
       <!-- Host / Join mode -->
       <div class="sec-lbl">Role</div>
       <div class="seg-ctrl">
@@ -509,7 +533,6 @@
         <div class="tmr-pip cur"></div>
         <div class="tmr-pip"></div>
         <div class="tmr-pip"></div>
-        <div class="tmr-pip"></div>
       </div>
       <div class="tmr-hub-row">
         <div class="tmr-hub hub-active" id="h-hub-auto">
@@ -569,7 +592,6 @@
         <div class="tmr-pip cur"></div>
         <div class="tmr-pip"></div>
         <div class="tmr-pip"></div>
-        <div class="tmr-pip"></div>
       </div>
       <div class="tmr-hub-row">
         <div class="tmr-hub hub-active" id="c-hub-auto">
@@ -599,10 +621,16 @@
   // ═══════════════════════════════════════════════
   var PHASES = [
     { name: 'Autonomous', duration: 20,  color: '#4a8fe8' },
-    { name: 'Transition', duration: 10,  color: '#454567' },
     { name: 'Teleop',     duration: 110, color: '#e8534a' },
     { name: 'Endgame',    duration: 30,  color: '#f0a500' }
   ];
+
+  // Configurable delay (seconds) between Auto end and Teleop start.
+  // This is off-clock — not part of either period.
+  var delayDuration = 5;
+  var inDelay       = false;
+  var delayRemain   = 0;
+  var delayLoop     = null;
 
   // Alliance Shift cues fire when these seconds remain in the Teleop phase.
   // Official timer 2:10→1:45→1:20→0:55 = 10s/35s/60s/85s elapsed
@@ -738,7 +766,9 @@
       elapsed: getElapsed(),
       phaseStart: ts.phaseStart,
       started:     matchStarted,
-      autoWinner:  autoWinner
+      autoWinner:  autoWinner,
+      inDelay:     inDelay,
+      delayRemain: delayRemain
     };
     clients.forEach(function (c) {
       try { if (c.open) c.send(msg); } catch (e) {}
@@ -809,6 +839,8 @@
     ts.running = msg.running;
     matchStarted = msg.started;
     autoWinner   = msg.autoWinner || null;
+    inDelay      = msg.inDelay || false;
+    delayRemain  = msg.delayRemain || 0;
 
     if (msg.running && msg.phaseStart) {
       ts.phaseStart = msg.phaseStart;
@@ -893,6 +925,8 @@
     clearInterval(timerLoop); timerLoop = null;
     ts.running = false; ts.phase = 0; ts.elapsed = 0; ts.phaseStart = 0;
     matchStarted = false; advLock = false; shiftsFired = {}; autoWinner = null;
+    inDelay = false; delayRemain = 0;
+    if (delayLoop) { clearInterval(delayLoop); delayLoop = null; }
     setHalo(null);
   }
 
@@ -912,7 +946,7 @@
     }
 
     // Alliance Shift audio cues — fire once per cue during Teleop phase
-    if (ts.running && ts.phase === 2) {
+    if (ts.running && ts.phase === 1) {
       ALLIANCE_SHIFT_CUES.forEach(function (cueAt) {
         if (remaining === cueAt && !shiftsFired[cueAt]) {
           shiftsFired[cueAt] = true;
@@ -925,9 +959,14 @@
   function advancePhase() {
     clearInterval(timerLoop); timerLoop = null;
 
-    // Auto just ended — randomly decide the winner before advancing
     if (ts.phase === 0) {
+      // Auto just ended — randomly pick winner, then start off-clock delay
       autoWinner = Math.random() < 0.5 ? 'red' : 'blue';
+      ts.running = false;
+      broadcastState();
+      renderTimer('h');
+      startDelay();
+      return;
     }
 
     ts.phase++;
@@ -947,11 +986,48 @@
       }, 500);
     } else {
       advLock = false;
-      playSound(ts.phase === 3 ? 'endgame' : 'phase');
+      playSound(ts.phase === 2 ? 'endgame' : 'phase'); // Endgame is now index 2
       broadcastState();
       timerLoop = setInterval(tick, 100);
       renderTimer('h');
     }
+  }
+
+  // ─── Delay (off-clock gap between Auto and Teleop) ──
+  function adjustDelay(delta) {
+    delayDuration = Math.max(0, Math.min(15, delayDuration + delta));
+    document.getElementById('delay-val').textContent = delayDuration + 's';
+  }
+
+  function startDelay() {
+    if (delayDuration <= 0) { goToTeleop(); return; }
+    inDelay      = true;
+    delayRemain  = delayDuration;
+    renderTimer('h');
+    broadcastState();
+    delayLoop = setInterval(function () {
+      delayRemain--;
+      renderTimer('h');
+      broadcastState();
+      if (delayRemain <= 0) {
+        clearInterval(delayLoop); delayLoop = null;
+        inDelay = false;
+        goToTeleop();
+      }
+    }, 1000);
+  }
+
+  function goToTeleop() {
+    inDelay       = false;
+    ts.phase      = 1; // Teleop
+    ts.elapsed    = 0;
+    ts.phaseStart = Date.now();
+    ts.running    = true;
+    advLock       = false;
+    playSound('phase'); // 3 Bells
+    startLoop();
+    renderTimer('h');
+    broadcastState();
   }
 
   function timerToggle() {
@@ -1003,11 +1079,21 @@
   // RENDER
   // ═══════════════════════════════════════════════
   function renderTimer(pfx) {
-    var phase     = PHASES[ts.phase];
-    var remaining = getRemaining();
-    var mins      = Math.floor(remaining / 60);
-    var secs      = remaining % 60;
-    var timeStr   = mins + ':' + String(secs).padStart(2, '0');
+    var phase, remaining, mins, secs, timeStr;
+
+    if (inDelay) {
+      // Off-clock delay between Auto and Teleop
+      phase    = { name: 'Transition', color: '#454567' };
+      mins     = Math.floor(delayRemain / 60);
+      secs     = delayRemain % 60;
+      timeStr  = mins + ':' + String(secs).padStart(2, '0');
+    } else {
+      phase     = PHASES[ts.phase];
+      remaining = getRemaining();
+      mins      = Math.floor(remaining / 60);
+      secs      = remaining % 60;
+      timeStr   = mins + ':' + String(secs).padStart(2, '0');
+    }
 
     // Clock
     setEl(pfx + '-clock',      'textContent', timeStr);
@@ -1031,7 +1117,7 @@
     var shiftRow   = document.getElementById(pfx + '-shift-row');
     var shiftClock = document.getElementById(pfx + '-shift-clock');
     if (shiftRow && shiftClock) {
-      if (ts.phase === 2 && ts.running) {
+      if (ts.phase === 1 && ts.running) {
         var nextIn = getNextShiftIn(remaining);
         if (nextIn !== null) {
           shiftRow.style.display = 'flex';
@@ -1080,14 +1166,14 @@
       setHub(pfx + '-hub-auto', pfx + '-hub-auto-s', 'hub-done', 'DONE');
     }
 
-    // Teleop
-    var telCls = p < 2 ? 'hub-wait' : (p === 2 ? 'hub-active' : 'hub-done');
-    var telTxt = p < 2 ? 'WAITING' : (p === 2 ? (running ? 'ACTIVE' : 'READY') : 'DONE');
+    // Teleop — index 1
+    var telCls = (p === 0 || inDelay) ? 'hub-wait' : (p === 1 ? 'hub-active' : 'hub-done');
+    var telTxt = (p === 0 || inDelay) ? 'WAITING' : (p === 1 ? (running ? 'ACTIVE' : 'READY') : 'DONE');
     setHub(pfx + '-hub-tel', pfx + '-hub-tel-s', telCls, telTxt);
 
-    // Endgame
-    var egCls = p < 3 ? 'hub-wait' : 'hub-eg';
-    var egTxt = p < 3 ? 'WAITING' : (running ? 'ACTIVE' : 'READY');
+    // Endgame — index 2
+    var egCls = p < 2 ? 'hub-wait' : 'hub-eg';
+    var egTxt = p < 2 ? 'WAITING' : (running ? 'ACTIVE' : 'READY');
     setHub(pfx + '-hub-eg', pfx + '-hub-eg-s', egCls, egTxt);
   }
 
@@ -1137,25 +1223,13 @@
 
   function updateHalo() {
     if (!ts.running) { setHalo(null); return; }
+    // Border is off during delay — no hub is active then
+    if (inDelay) { setHalo(null); return; }
+
     switch (ts.phase) {
-      case 0: // Auto — solid alliance color
-        setHalo(allianceRgba(0.40), false);
-        break;
-      case 1: // Transition — flash if this device's alliance won auto, solid if lost
-        if (autoWinner === null) {
-          setHalo(allianceRgba(0.35), false);
-        } else if (autoWinner === alliance) {
-          setHalo(allianceRgba(0.55), true);  // winner: flash
-        } else {
-          setHalo(allianceRgba(0.35), false); // loser:  solid
-        }
-        break;
-      case 2: // Teleop — solid alliance color
-        setHalo(allianceRgba(0.40), false);
-        break;
-      case 3: // Endgame — pulse
-        setHalo(allianceRgba(0.48), true);
-        break;
+      case 0: setHalo(allianceRgba(0.40), false); break; // Auto
+      case 1: setHalo(allianceRgba(0.40), false); break; // Teleop
+      case 2: setHalo(allianceRgba(0.48), true);  break; // Endgame — pulse
       default: setHalo(null);
     }
   }
