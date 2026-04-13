@@ -240,6 +240,21 @@
       padding: 4px 0; transition: color .4s;
     }
 
+    /* ── Shift timer ───────────────────────────────── */
+    .tmr-shift-row {
+      display: flex; flex-direction: column; align-items: center;
+      margin: 4px 0 8px; gap: 1px;
+    }
+    .tmr-shift-lbl {
+      font-size: 9px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text3);
+    }
+    .tmr-shift-clock {
+      font-size: 28px; font-weight: 700;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      color: var(--text2); letter-spacing: -1px;
+    }
+
     /* ── Phase pips ────────────────────────────────── */
     .tmr-pips { display: flex; gap: 6px; justify-content: center; margin: 16px 0 20px; }
     .tmr-pip  {
@@ -485,7 +500,11 @@
     <div class="body tmr-body">
       <div class="tmr-phase-lbl">Current Phase</div>
       <div class="tmr-phase-name" id="h-phase-name">Autonomous</div>
-      <div class="tmr-clock"      id="h-clock">0:15</div>
+      <div class="tmr-clock"      id="h-clock">0:20</div>
+      <div class="tmr-shift-row" id="h-shift-row" style="display:none">
+        <div class="tmr-shift-lbl">Alliance Shift In</div>
+        <div class="tmr-shift-clock" id="h-shift-clock">0:10</div>
+      </div>
       <div class="tmr-pips"       id="h-pips">
         <div class="tmr-pip cur"></div>
         <div class="tmr-pip"></div>
@@ -541,7 +560,11 @@
     <div class="body tmr-body">
       <div class="tmr-phase-lbl">Current Phase</div>
       <div class="tmr-phase-name" id="c-phase-name">Autonomous</div>
-      <div class="tmr-clock"      id="c-clock">0:15</div>
+      <div class="tmr-clock"      id="c-clock">0:20</div>
+      <div class="tmr-shift-row" id="c-shift-row" style="display:none">
+        <div class="tmr-shift-lbl">Alliance Shift In</div>
+        <div class="tmr-shift-clock" id="c-shift-clock">0:10</div>
+      </div>
       <div class="tmr-pips"       id="c-pips">
         <div class="tmr-pip cur"></div>
         <div class="tmr-pip"></div>
@@ -576,7 +599,7 @@
   // ═══════════════════════════════════════════════
   var PHASES = [
     { name: 'Autonomous', duration: 20,  color: '#4a8fe8' },
-    { name: 'Transition', duration: 3,   color: '#454567' },
+    { name: 'Transition', duration: 10,  color: '#454567' },
     { name: 'Teleop',     duration: 110, color: '#e8534a' },
     { name: 'Endgame',    duration: 30,  color: '#f0a500' }
   ];
@@ -586,6 +609,17 @@
   // → 100s/75s/50s/25s remaining in a 110s Teleop phase.
   var ALLIANCE_SHIFT_CUES = [100, 75, 50, 25];
   var shiftsFired = {};
+
+  // Returns seconds until the next Alliance Shift, or null if all have passed.
+  // ALLIANCE_SHIFT_CUES are seconds REMAINING in the Teleop phase when each fires.
+  function getNextShiftIn(remaining) {
+    for (var i = 0; i < ALLIANCE_SHIFT_CUES.length; i++) {
+      if (remaining > ALLIANCE_SHIFT_CUES[i]) {
+        return remaining - ALLIANCE_SHIFT_CUES[i];
+      }
+    }
+    return null; // all shifts done
+  }
 
   // ═══════════════════════════════════════════════
   // APP STATE
@@ -977,7 +1011,7 @@
 
     // Clock
     setEl(pfx + '-clock',      'textContent', timeStr);
-    setEl(pfx + '-clock',      'style.color', phase.color);
+    setEl(pfx + '-clock',      'style.color', '#f0f0f8');
 
     // Phase name
     setEl(pfx + '-phase-name', 'textContent', phase.name);
@@ -992,6 +1026,25 @@
 
     // Hub cards
     renderHubs(pfx);
+
+    // Shift timer — visible during Teleop only, counts to next Alliance Shift
+    var shiftRow   = document.getElementById(pfx + '-shift-row');
+    var shiftClock = document.getElementById(pfx + '-shift-clock');
+    if (shiftRow && shiftClock) {
+      if (ts.phase === 2 && ts.running) {
+        var nextIn = getNextShiftIn(remaining);
+        if (nextIn !== null) {
+          shiftRow.style.display = 'flex';
+          var sm = Math.floor(nextIn / 60);
+          var ss = nextIn % 60;
+          shiftClock.textContent = sm + ':' + String(ss).padStart(2, '0');
+        } else {
+          shiftRow.style.display = 'none';
+        }
+      } else {
+        shiftRow.style.display = 'none';
+      }
+    }
 
     // Play button label (host only)
     if (pfx === 'h') {
@@ -1085,10 +1138,24 @@
   function updateHalo() {
     if (!ts.running) { setHalo(null); return; }
     switch (ts.phase) {
-      case 0: setHalo(allianceRgba(0.40), false); break;  // Auto   — alliance color
-      case 1: setHalo(null);                       break;  // Transition — off
-      case 2: setHalo(allianceRgba(0.40), false); break;  // Teleop — alliance color
-      case 3: setHalo(allianceRgba(0.48), true);  break;  // Endgame — pulse
+      case 0: // Auto — solid alliance color
+        setHalo(allianceRgba(0.40), false);
+        break;
+      case 1: // Transition — flash if this device's alliance won auto, solid if lost
+        if (autoWinner === null) {
+          setHalo(allianceRgba(0.35), false);
+        } else if (autoWinner === alliance) {
+          setHalo(allianceRgba(0.55), true);  // winner: flash
+        } else {
+          setHalo(allianceRgba(0.35), false); // loser:  solid
+        }
+        break;
+      case 2: // Teleop — solid alliance color
+        setHalo(allianceRgba(0.40), false);
+        break;
+      case 3: // Endgame — pulse
+        setHalo(allianceRgba(0.48), true);
+        break;
       default: setHalo(null);
     }
   }
