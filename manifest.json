@@ -1,7 +1,7 @@
 {
-  "name": "3310 Scout — REBUILT 2026",
-  "short_name": "3310 Scout",
-  "description": "FRC Team 3310 HawkEye scouting app for REBUILT 2026",
+  "name": "Match Timer — REBUILT 2026",
+  "short_name": "Match Timer",
+  "description": "FRC match timer for REBUILT 2026",
   "start_url": "/2026/",
   "display": "standalone",
   "background_color": "#0b0b16",
