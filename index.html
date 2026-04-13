@@ -650,6 +650,18 @@ select option{background:var(--surf2)}
         <div style="font-size:11px;color:var(--text2);margin-top:8px;text-align:center">Leave blank to run standalone (no sync)</div>
       </div>
 
+      <div class="card">
+        <div class="card-hd">DELAY AFTER AUTO</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button onclick="setupAdjDelay(-1)" style="width:48px;height:48px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surf2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">−</button>
+          <div style="flex:1;text-align:center">
+            <div id="setup-delay-val" style="font-size:32px;font-weight:900;font-family:'SF Mono','Courier New',monospace">3s</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">off-clock gap between Auto and Teleop</div>
+          </div>
+          <button onclick="setupAdjDelay(+1)" style="width:48px;height:48px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surf2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">+</button>
+        </div>
+      </div>
+
       <button class="btn btn-gold" onclick="setupGo()" style="font-size:18px;padding:18px;margin-top:4px">
         ▶  Open Timer
       </button>
@@ -712,14 +724,25 @@ function setupGo() {
   openTimer();
 }
 
+function setupAdjDelay(delta) {
+  var cur = parseInt(localStorage.getItem('tmr_delay') || '3', 10);
+  var next = Math.max(0, Math.min(15, cur + delta));
+  localStorage.setItem('tmr_delay', String(next));
+  var el = document.getElementById('setup-delay-val');
+  if (el) el.textContent = next + 's';
+}
+
 // Init setup screen state from localStorage
 (function() {
   var isHost = localStorage.getItem('tmr_is_host') === '1';
   var room = localStorage.getItem('tmr_room') || '';
+  var delay = parseInt(localStorage.getItem('tmr_delay') || '3', 10);
   var tog = document.getElementById('setup-host-tog');
   if (tog && isHost) tog.className = 'tog on';
   var inp = document.getElementById('setup-room');
   if (inp && room) inp.value = room.toUpperCase();
+  var dEl = document.getElementById('setup-delay-val');
+  if (dEl) dEl.textContent = delay + 's';
 })();
 
 /* ─── NAVIGATION ─── */
@@ -826,8 +849,17 @@ var TMR_VIS = ['AUTO','TRANSITION','SHIFT 1','SHIFT 2','SHIFT 3','SHIFT 4','END 
 var TMR_PHASE_STARTS = (function(){
   var a=[],t=0;
   TMR_PHASES.forEach(function(p){a.push(t);t+=p.d;});
-  return a; // [0,20,23,33,58,83,108,133]
+  return a;
 })();
+
+function tmrApplyDelay(d) {
+  var delay = (d !== undefined) ? d : parseInt(localStorage.getItem('tmr_delay') || '3', 10);
+  TMR_PHASES[1].d = delay; // PAUSE phase
+  var starts = [], t = 0;
+  TMR_PHASES.forEach(function(p) { starts.push(t); t += p.d; });
+  TMR_PHASE_STARTS = starts;
+  TMR_TOTAL = t;
+}
 
 function tmrPhaseAt(e) {
   var t=e;
@@ -1049,6 +1081,7 @@ function tmrIsStandalone() {
   return !(localStorage.getItem('tmr_room') || '').replace(/[^a-zA-Z0-9_-]/g, '');
 }
 function openTimer() {
+  tmrApplyDelay();
   goTo('sc-timer');
   TMR._lastPhaseIdx=-1;
   tmrLoadAudio();
@@ -1419,9 +1452,15 @@ function timerUpdateDisplay(){
       if(pn==='END GAME')navigator.vibrate([100,50,100,50,150]);
       else navigator.vibrate(70);
     }
-    // Host: trigger auto winner modal on Transition
-    if(pn==='TRANSITION'&&tmrNetIsHost()&&!TMR.wonAuto){
-      setTimeout(tmrShowWinnerModal,400);
+    // Host: trigger auto winner modal on Transition (random in solo mode)
+    if(pn==='TRANSITION'&&(tmrNetIsHost()||tmrIsStandalone())&&!TMR.wonAuto){
+      if(tmrIsStandalone()){
+        var w=Math.random()<0.5?'red':'blue';
+        TMR.wonAuto=w;
+        toast('🎲 Auto winner (random): '+w.toUpperCase());
+      } else {
+        setTimeout(tmrShowWinnerModal,400);
+      }
     }
   }
 
@@ -1429,13 +1468,13 @@ function timerUpdateDisplay(){
   if(tmrNetIsHost()){
     if(!TMR._sfxPlayed)TMR._sfxPlayed={};
     var cues=[
-      {k:'auto_end',   snd:'buzzer',     trigger:20},    // buzzer at auto end
-      {k:'teleop',     snd:'threebells', trigger:33},    // 3 bells at teleop start (Shift 1)
-      {k:'shift2',     snd:'shift',      trigger:58},    // shift sound
-      {k:'shift3',     snd:'shift',      trigger:83},
-      {k:'shift4',     snd:'shift',      trigger:108},
-      {k:'endgame',    snd:'endgame',    trigger:133},   // endgame warning
-      {k:'match_end',  snd:'buzzer',     trigger:163}    // buzzer at match end
+      {k:'auto_end',   snd:'buzzer',     trigger:TMR_PHASE_STARTS[1]},  // buzzer at auto end
+      {k:'teleop',     snd:'threebells', trigger:TMR_PHASE_STARTS[3]},  // 3 bells at teleop start
+      {k:'shift2',     snd:'shift',      trigger:TMR_PHASE_STARTS[4]},  // shift sound
+      {k:'shift3',     snd:'shift',      trigger:TMR_PHASE_STARTS[5]},
+      {k:'shift4',     snd:'shift',      trigger:TMR_PHASE_STARTS[6]},
+      {k:'endgame',    snd:'endgame',    trigger:TMR_PHASE_STARTS[7]},  // endgame warning
+      {k:'match_end',  snd:'buzzer',     trigger:TMR_TOTAL}             // buzzer at match end
     ];
     cues.forEach(function(c){
       if(elapsed>=c.trigger&&!TMR._sfxPlayed[c.k]){
