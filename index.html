@@ -298,6 +298,10 @@
     .hub-wait { border-color: var(--surf4); background: rgba(20,20,34,.4); opacity: .45; }
     .hub-wait .tmr-hub-state { color: var(--text3); }
 
+    /* Other alliance's shift window — not our turn */
+    .hub-standby { border-color: var(--text3); background: rgba(20,20,34,.5); opacity: .55; }
+    .hub-standby .tmr-hub-state { color: var(--text3); }
+
     @keyframes eg-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     .hub-eg { border-color: var(--gold); background: var(--gold-d); animation: eg-pulse 1s ease-in-out infinite; }
     .hub-eg .tmr-hub-state { color: var(--gold); }
@@ -1166,9 +1170,22 @@
       setHub(pfx + '-hub-auto', pfx + '-hub-auto-s', 'hub-done', 'DONE');
     }
 
-    // Teleop — index 1
-    var telCls = (p === 0 || inDelay) ? 'hub-wait' : (p === 1 ? 'hub-active' : 'hub-done');
-    var telTxt = (p === 0 || inDelay) ? 'WAITING' : (p === 1 ? (running ? 'ACTIVE' : 'READY') : 'DONE');
+    // Teleop — index 1; show ACTIVE/STANDBY based on shift window
+    var telCls, telTxt;
+    if (p === 0 || inDelay) {
+      telCls = 'hub-wait'; telTxt = 'WAITING';
+    } else if (p === 1) {
+      var activeAl = running ? getActiveAlliance(getRemaining()) : null;
+      if (!running) {
+        telCls = 'hub-active'; telTxt = 'READY';
+      } else if (activeAl === null || activeAl === alliance) {
+        telCls = 'hub-active'; telTxt = 'ACTIVE';  // our window
+      } else {
+        telCls = 'hub-standby'; telTxt = 'STANDBY'; // other alliance's window
+      }
+    } else {
+      telCls = 'hub-done'; telTxt = 'DONE';
+    }
     setHub(pfx + '-hub-tel', pfx + '-hub-tel-s', telCls, telTxt);
 
     // Endgame — index 2
@@ -1197,6 +1214,19 @@
   // ═══════════════════════════════════════════════
   // HALO — single div, inset glow on all 4 edges
   // ═══════════════════════════════════════════════
+  // During Teleop, returns which alliance is currently in their active shift window.
+  // null = both active (transition window at start of teleop, first 10s).
+  // Loser gets first window; then winner/loser alternate every 25s.
+  // ALLIANCE_SHIFT_CUES = [100, 75, 50, 25] (seconds remaining when each shift fires)
+  function getActiveAlliance(remaining) {
+    if (remaining > ALLIANCE_SHIFT_CUES[0]) return null; // both active — pre-first-shift window
+    var loser = autoWinner === 'red' ? 'blue' : 'red';
+    if (remaining > ALLIANCE_SHIFT_CUES[1]) return loser;       // 100 → 75: loser first
+    if (remaining > ALLIANCE_SHIFT_CUES[2]) return autoWinner;  // 75  → 50: winner
+    if (remaining > ALLIANCE_SHIFT_CUES[3]) return loser;       // 50  → 25: loser
+    return autoWinner;                                           // 25  →  0: winner
+  }
+
   function allianceRgba(alpha) {
     return alliance === 'red'
       ? 'rgba(232,83,74,' + alpha + ')'
@@ -1222,15 +1252,31 @@
   }
 
   function updateHalo() {
-    if (!ts.running) { setHalo(null); return; }
-    // Border is off during delay — no hub is active then
-    if (inDelay) { setHalo(null); return; }
+    if (!ts.running && !inDelay) { setHalo(null); return; }
+
+    // Delay between Auto and Teleop — transition period, both alliances active
+    if (inDelay) { setHalo(allianceRgba(0.40), false); return; }
 
     switch (ts.phase) {
-      case 0: setHalo(allianceRgba(0.40), false); break; // Auto
-      case 1: setHalo(allianceRgba(0.40), false); break; // Teleop
-      case 2: setHalo(allianceRgba(0.48), true);  break; // Endgame — pulse
-      default: setHalo(null);
+      case 0: // Auto — both alliances active
+        setHalo(allianceRgba(0.40), false);
+        break;
+
+      case 1: // Teleop — active only during our alliance's shift window
+        var active = getActiveAlliance(getRemaining());
+        if (active === null || active === alliance) {
+          setHalo(allianceRgba(0.40), false); // our window or transition
+        } else {
+          setHalo(null); // other alliance's window
+        }
+        break;
+
+      case 2: // Endgame — both alliances active, pulse
+        setHalo(allianceRgba(0.48), true);
+        break;
+
+      default:
+        setHalo(null);
     }
   }
 
