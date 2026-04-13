@@ -1196,7 +1196,7 @@ function tmrShowCountdownTo(startMs) {
 
   overlay.innerHTML=
     '<div style="font-size:14px;font-weight:800;letter-spacing:2px;color:var(--text2)">MATCH STARTS IN</div>'
-    +'<div id="tmr-countdown-num" class="tmr-clock" style="font-size:140px;color:var(--gold)">5</div>';
+    +'<div id="tmr-countdown-num" class="tmr-clock" style="font-size:140px;color:var(--gold)">3</div>';
   body.parentElement.appendChild(overlay);
 
   // Swap in the timer body immediately
@@ -1252,12 +1252,12 @@ function timerBeginCountdown() {
   TMR.wonAuto='';
   if(!TMR_NET.connected){
     // Offline mode — just countdown locally
-    var sm=Date.now()+5500;
+    var sm=Date.now()+3300;
     TMR._startMs=sm;
     tmrShowCountdownTo(sm);
     return;
   }
-  var sm=Date.now()+5500;
+  var sm=Date.now()+3300;
   TMR._startMs=sm;
   tmrNetPublish({t:'start_in',startMs:sm,hostAlly:TMR.ally});
   tmrShowCountdownTo(sm);
@@ -1383,9 +1383,9 @@ function timerUpdateDisplay(){
   // Phase label/name
   var lbl=document.getElementById('tmr-phase-lbl');
   var nameEl=document.getElementById('tmr-phase-name');
-  if(lbl) lbl.textContent=isPause?'FIELD RESET':'PHASE';
+  if(lbl) lbl.textContent=isPause?'DELAY':'PHASE';
   if(nameEl){
-    nameEl.textContent=isPause?'AUTO END':pn;
+    nameEl.textContent=isPause?'TELEOP IN':pn;
     nameEl.className='tmr-phase-name'+(pn==='END GAME'?' tmr-endgame':'');
   }
 
@@ -1405,8 +1405,8 @@ function timerUpdateDisplay(){
   // Phase clock
   var ck=document.getElementById('tmr-clock');
   if(ck){
-    ck.textContent=tmrFmt(isPause?0:ph.rem);
-    ck.style.color=pn==='AUTO'?'var(--blue)':pn==='END GAME'?(TMR.ally==='red'?'var(--red)':'var(--blue)'):'var(--gold)';
+    ck.textContent=tmrFmt(ph.rem);
+    ck.style.color=isPause?'var(--text2)':pn==='AUTO'?'var(--blue)':pn==='END GAME'?(TMR.ally==='red'?'var(--red)':'var(--blue)'):'var(--gold)';
   }
 
   // Pips
