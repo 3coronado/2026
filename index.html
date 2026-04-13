@@ -274,6 +274,12 @@
     .hub-eg { border-color: var(--gold); background: var(--gold-d); animation: eg-pulse 1s ease-in-out infinite; }
     .hub-eg .tmr-hub-state { color: var(--gold); }
 
+    /* Auto winner result cards */
+    .hub-win-red  { border-color: var(--red);  background: var(--red-d); }
+    .hub-win-red  .tmr-hub-state { color: var(--red); }
+    .hub-win-blue { border-color: var(--blue); background: var(--blue-d); }
+    .hub-win-blue .tmr-hub-state { color: var(--blue); }
+
     /* ── Play/Pause control ────────────────────────── */
     .tmr-ctrl-row { display: flex; gap: 10px; width: 100%; max-width: 360px; margin-bottom: 14px; }
     .tmr-ctrl-btn {
@@ -303,16 +309,14 @@
       padding: 2px 7px; border-radius: 4px;
     }
 
-    /* ── Halo overlays ─────────────────────────────── */
-    #halo-l, #halo-r {
-      position: fixed; top: 0; bottom: 0; width: 50%;
+    /* ── Halo overlay — single div, inset glow on all 4 edges ── */
+    #halo {
+      position: fixed; inset: 0;
       pointer-events: none; z-index: 997; display: none;
     }
-    #halo-l { left: 0; }
-    #halo-r { right: 0; }
     @keyframes halo-pulse {
-      0%,100% { box-shadow: inset 0 0 80px 30px var(--halo-c,transparent); }
-      50%      { box-shadow: inset 0 0 140px 60px var(--halo-c,transparent); }
+      0%,100% { box-shadow: inset 0 0 60px 20px var(--halo-c,transparent); }
+      50%      { box-shadow: inset 0 0 110px 45px var(--halo-c,transparent); }
     }
 
     /* ── Countdown overlay ─────────────────────────── */
@@ -446,8 +450,7 @@
   <!-- ══════════════════════════════════════════════
        HALO OVERLAYS (fixed, pointer-events:none)
   ══════════════════════════════════════════════ -->
-  <div id="halo-l"></div>
-  <div id="halo-r"></div>
+  <div id="halo"></div>
 
   <!-- ══════════════════════════════════════════════
        COUNTDOWN OVERLAY
@@ -572,11 +575,17 @@
   // CONSTANTS
   // ═══════════════════════════════════════════════
   var PHASES = [
-    { name: 'Autonomous', duration: 15,  color: '#4a8fe8' },
-    { name: 'Pause',      duration: 3,   color: '#454567' },
-    { name: 'Teleop',     duration: 105, color: '#e8534a' },
+    { name: 'Autonomous', duration: 20,  color: '#4a8fe8' },
+    { name: 'Transition', duration: 3,   color: '#454567' },
+    { name: 'Teleop',     duration: 110, color: '#e8534a' },
     { name: 'Endgame',    duration: 30,  color: '#f0a500' }
   ];
+
+  // Alliance Shift cues fire when these seconds remain in the Teleop phase.
+  // Official timer 2:10→1:45→1:20→0:55 = 10s/35s/60s/85s elapsed
+  // → 100s/75s/50s/25s remaining in a 110s Teleop phase.
+  var ALLIANCE_SHIFT_CUES = [100, 75, 50, 25];
+  var shiftsFired = {};
 
   // ═══════════════════════════════════════════════
   // APP STATE
@@ -594,6 +603,7 @@
   var matchStarted = false;
   var timerLoop    = null;
   var advLock      = false; // prevents double-advance on a single tick
+  var autoWinner   = null;  // 'red' | 'blue' | null — set at end of Auto
 
   // PeerJS
   var peer      = null;
@@ -693,7 +703,8 @@
       running: ts.running,
       elapsed: getElapsed(),
       phaseStart: ts.phaseStart,
-      started: matchStarted
+      started:     matchStarted,
+      autoWinner:  autoWinner
     };
     clients.forEach(function (c) {
       try { if (c.open) c.send(msg); } catch (e) {}
@@ -763,6 +774,7 @@
     ts.phase   = msg.phase;
     ts.running = msg.running;
     matchStarted = msg.started;
+    autoWinner   = msg.autoWinner || null;
 
     if (msg.running && msg.phaseStart) {
       ts.phaseStart = msg.phaseStart;
@@ -846,7 +858,7 @@
   function resetTimerState() {
     clearInterval(timerLoop); timerLoop = null;
     ts.running = false; ts.phase = 0; ts.elapsed = 0; ts.phaseStart = 0;
-    matchStarted = false; advLock = false;
+    matchStarted = false; advLock = false; shiftsFired = {}; autoWinner = null;
     setHalo(null);
   }
 
@@ -857,14 +869,33 @@
 
   function tick() {
     renderTimer('h');
-    if (ts.running && getRemaining() <= 0 && !advLock) {
+    var remaining = getRemaining();
+
+    if (ts.running && remaining <= 0 && !advLock) {
       advLock = true;
       advancePhase();
+      return;
+    }
+
+    // Alliance Shift audio cues — fire once per cue during Teleop phase
+    if (ts.running && ts.phase === 2) {
+      ALLIANCE_SHIFT_CUES.forEach(function (cueAt) {
+        if (remaining === cueAt && !shiftsFired[cueAt]) {
+          shiftsFired[cueAt] = true;
+          playSound('shift');
+        }
+      });
     }
   }
 
   function advancePhase() {
     clearInterval(timerLoop); timerLoop = null;
+
+    // Auto just ended — randomly decide the winner before advancing
+    if (ts.phase === 0) {
+      autoWinner = Math.random() < 0.5 ? 'red' : 'blue';
+    }
+
     ts.phase++;
     ts.elapsed    = 0;
     ts.phaseStart = Date.now();
@@ -984,10 +1015,17 @@
     var p = ts.phase;
     var running = ts.running;
 
-    // Auton
-    setHub(pfx + '-hub-auto',  pfx + '-hub-auto-s',
-      p === 0 ? 'hub-active' : 'hub-done',
-      p === 0 ? (running ? 'ACTIVE' : 'READY') : 'DONE');
+    // Auton — show random winner result once Auto ends
+    if (p === 0) {
+      setHub(pfx + '-hub-auto', pfx + '-hub-auto-s',
+        'hub-active', running ? 'ACTIVE' : 'READY');
+    } else if (autoWinner) {
+      setHub(pfx + '-hub-auto', pfx + '-hub-auto-s',
+        'hub-win-' + autoWinner,
+        autoWinner.toUpperCase() + ' WIN');
+    } else {
+      setHub(pfx + '-hub-auto', pfx + '-hub-auto-s', 'hub-done', 'DONE');
+    }
 
     // Teleop
     var telCls = p < 2 ? 'hub-wait' : (p === 2 ? 'hub-active' : 'hub-done');
@@ -1018,34 +1056,39 @@
   }
 
   // ═══════════════════════════════════════════════
-  // HALO
+  // HALO — single div, inset glow on all 4 edges
   // ═══════════════════════════════════════════════
+  function allianceRgba(alpha) {
+    return alliance === 'red'
+      ? 'rgba(232,83,74,' + alpha + ')'
+      : 'rgba(74,143,232,' + alpha + ')';
+  }
+
   function setHalo(color, pulse) {
-    var hl = document.getElementById('halo-l');
-    var hr = document.getElementById('halo-r');
-    if (!hl || !hr) return;
+    var h = document.getElementById('halo');
+    if (!h) return;
     if (!color) {
-      hl.style.display = hr.style.display = 'none';
+      h.style.display = 'none';
       return;
     }
-    hl.style.display = hr.style.display = 'block';
+    h.style.display = 'block';
     document.documentElement.style.setProperty('--halo-c', color);
     if (pulse) {
-      hl.style.animation = hr.style.animation = 'halo-pulse 1s ease-in-out infinite';
-      hl.style.boxShadow = hr.style.boxShadow = '';
+      h.style.animation  = 'halo-pulse 1s ease-in-out infinite';
+      h.style.boxShadow  = '';
     } else {
-      hl.style.animation = hr.style.animation = 'none';
-      hl.style.boxShadow = hr.style.boxShadow = 'inset 0 0 70px 30px ' + color;
+      h.style.animation  = 'none';
+      h.style.boxShadow  = 'inset 0 0 60px 20px ' + color;
     }
   }
 
   function updateHalo() {
     if (!ts.running) { setHalo(null); return; }
     switch (ts.phase) {
-      case 0: setHalo('rgba(74,143,232,0.38)',  false); break;
-      case 1: setHalo(null);                            break;
-      case 2: setHalo('rgba(232,83,74,0.38)',   false); break;
-      case 3: setHalo('rgba(240,165,0,0.42)',   true);  break;
+      case 0: setHalo(allianceRgba(0.40), false); break;  // Auto   — alliance color
+      case 1: setHalo(null);                       break;  // Transition — off
+      case 2: setHalo(allianceRgba(0.40), false); break;  // Teleop — alliance color
+      case 3: setHalo(allianceRgba(0.48), true);  break;  // Endgame — pulse
       default: setHalo(null);
     }
   }
@@ -1088,11 +1131,19 @@
         osc.stop(ctx.currentTime + t0 + dur + 0.05);
       }
       switch (type) {
+        // Countdown ticks
         case 'tick':    tone(1000, 0,    0.10, 0.25); break;
-        case 'start':   tone(880,  0,    0.12, 0.30); tone(1100, 0.15, 0.18, 0.30); break;
-        case 'phase':   tone(660,  0,    0.10, 0.28); tone(880,  0.13, 0.14, 0.24); break;
-        case 'endgame': tone(880,  0,    0.08, 0.30); tone(880,  0.11, 0.08, 0.30); tone(1100, 0.23, 0.20, 0.35); break;
-        case 'end':     tone(660,  0,    0.10, 0.30); tone(500,  0.13, 0.10, 0.30); tone(350,  0.27, 0.35, 0.40); break;
+        // Match start — "Cavalry Charge" feel: quick rising bugle phrase
+        case 'start':   tone(523, 0, 0.08, 0.28); tone(659, 0.09, 0.08, 0.28);
+                        tone(784, 0.18, 0.08, 0.28); tone(1047,0.27, 0.18, 0.32); break;
+        // AUTO→Teleop — "3 Bells"
+        case 'phase':   tone(880, 0, 0.12, 0.30); tone(880, 0.20, 0.12, 0.28); tone(880, 0.40, 0.18, 0.30); break;
+        // Alliance Shift — two quick low tones (subtle, no audio cue per manual)
+        case 'shift':   tone(440, 0, 0.07, 0.18); tone(550, 0.10, 0.07, 0.15); break;
+        // Endgame — three ascending tones (TBD per manual)
+        case 'endgame': tone(880, 0, 0.08, 0.30); tone(880, 0.11, 0.08, 0.30); tone(1100,0.23, 0.20, 0.35); break;
+        // Match end — "Buzzer": long descending tone
+        case 'end':     tone(220, 0, 0.60, 0.45); break;
       }
     } catch (e) {}
   }
