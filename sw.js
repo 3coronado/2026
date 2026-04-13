@@ -1,10 +1,9 @@
-const CACHE = '3310-scout-v2';
+const CACHE = 'match-timer-v3';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icon.svg'
 ];
 
 self.addEventListener('install', e => {
